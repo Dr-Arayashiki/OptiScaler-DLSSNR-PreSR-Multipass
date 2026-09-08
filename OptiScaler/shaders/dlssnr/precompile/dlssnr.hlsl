@@ -489,6 +489,41 @@ float3 CubeScaleResidual(float3 P, float3 T)
     return P + saturate(alpha) * d;
 }
 
+// Bicubic (Catmull-Rom) weight. Used when the model ran below the frame so pores and fabric are
+// not softened by a bilinear upsample before composition sees them.
+float CatmullRomWeight(float x)
+{
+    x = abs(x);
+    if (x <= 1.0)
+        return (1.5 * x - 2.5) * x * x + 1.0;
+    if (x <= 2.0)
+        return ((-0.5 * x + 2.5) * x - 4.0) * x + 2.0;
+    return 0.0;
+}
+
+float4 SampleCatmullRom(Texture2D<float4> tex, float2 uv, float2 texSize)
+{
+    float2 coord = uv * texSize - 0.5;
+    float2 idx = floor(coord);
+    float2 f = coord - idx;
+    float4 result = 0.0;
+    float weightSum = 0.0;
+
+    [unroll] for (int j = -1; j <= 2; ++j)
+    {
+        const float wy = CatmullRomWeight(f.y - j);
+        [unroll] for (int i = -1; i <= 2; ++i)
+        {
+            const float w = CatmullRomWeight(f.x - i) * wy;
+            const float2 sampleUv = (idx + float2(i, j) + 0.5) / texSize;
+            result += tex.SampleLevel(gLinear, sampleUv, 0) * w;
+            weightSum += w;
+        }
+    }
+
+    return result / max(weightSum, 1e-6);
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
@@ -812,9 +847,15 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     }
 
     // Sampled rather than loaded: when the model ran at a reduced resolution these are smaller than the
-    // frame, and its edit is enlarged here while the frame underneath stays untouched.
-    float4 proxySample = gSource.SampleLevel(gLinear, cmpUv, 0);
-    float4 modelSample = gModel.SampleLevel(gLinear, cmpUv, 0);
+    // frame, and its edit is enlarged here while the frame underneath stays untouched. Catmull-Rom
+    // keeps high frequencies that bilinear softens (pores, hair, leather grain).
+    uint sampleW, sampleH;
+    gModel.GetDimensions(sampleW, sampleH);
+    const bool modelSampleSmall = sampleW != gWidth || sampleH != gHeight;
+    float4 proxySample = modelSampleSmall ? SampleCatmullRom(gSource, cmpUv, float2(sampleW, sampleH))
+                                          : gSource.SampleLevel(gLinear, cmpUv, 0);
+    float4 modelSample = modelSampleSmall ? SampleCatmullRom(gModel, cmpUv, float2(sampleW, sampleH))
+                                          : gModel.SampleLevel(gLinear, cmpUv, 0);
 
     // Nothing was encoded on the way in, so nothing is decoded here either.
     float3 proxy = gPassthrough != 0 ? proxySample.rgb : SrgbToLinear(proxySample.rgb);
@@ -1005,7 +1046,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // Adding the same floor above and below leaves bright pixels alone -- where luminance is far
     // larger than the floor the term vanishes -- while making the ratio fall smoothly to one as
     // luminance approaches zero. No edit at all is the right answer for a pixel with no light in it.
-    const float kRatioFloor = 1.0 / 512.0;
+    const float kRatioFloor = 1.0 / 256.0;
     float lumaRatio = (upgradedLuma + kRatioFloor) / (originalLuma + kRatioFloor);
 
     // Where detail strength above 1 goes.
@@ -1067,6 +1108,53 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         result = gPassthrough != 0 ? modelDirect : NeutwoDecode(modelDirect);
     else if (gReversibleMode == 4)
         result = gPassthrough != 0 ? modelDirect : HybridDecode(modelDirect);
+
+    // Soften high-frequency NR residual noise (dirty / crawling skin) without removing the low-frequency
+    // light/colour edit. Peel HF off (model - proxy), subtract from the composed residual. Stronger on skin.
+    {
+        const float2 texel = float2(1.0 / max((float) gWidth, 1.0), 1.0 / max((float) gHeight, 1.0));
+        const float2 uN = cmpUv + float2(-texel.x, 0.0);
+        const float2 uS = cmpUv + float2(texel.x, 0.0);
+        const float2 uW = cmpUv + float2(0.0, -texel.y);
+        const float2 uE = cmpUv + float2(0.0, texel.y);
+        const float3 e0 = result - original;
+        const float3 d0 = edit;
+
+        float4 msN = modelSampleSmall ? SampleCatmullRom(gModel, uN, float2(sampleW, sampleH))
+                                      : gModel.SampleLevel(gLinear, uN, 0);
+        float4 msS = modelSampleSmall ? SampleCatmullRom(gModel, uS, float2(sampleW, sampleH))
+                                      : gModel.SampleLevel(gLinear, uS, 0);
+        float4 msW = modelSampleSmall ? SampleCatmullRom(gModel, uW, float2(sampleW, sampleH))
+                                      : gModel.SampleLevel(gLinear, uW, 0);
+        float4 msE = modelSampleSmall ? SampleCatmullRom(gModel, uE, float2(sampleW, sampleH))
+                                      : gModel.SampleLevel(gLinear, uE, 0);
+        float4 psN = modelSampleSmall ? SampleCatmullRom(gSource, uN, float2(sampleW, sampleH))
+                                      : gSource.SampleLevel(gLinear, uN, 0);
+        float4 psS = modelSampleSmall ? SampleCatmullRom(gSource, uS, float2(sampleW, sampleH))
+                                      : gSource.SampleLevel(gLinear, uS, 0);
+        float4 psW = modelSampleSmall ? SampleCatmullRom(gSource, uW, float2(sampleW, sampleH))
+                                      : gSource.SampleLevel(gLinear, uW, 0);
+        float4 psE = modelSampleSmall ? SampleCatmullRom(gSource, uE, float2(sampleW, sampleH))
+                                      : gSource.SampleLevel(gLinear, uE, 0);
+
+        float3 mN = gPassthrough != 0 ? msN.rgb : SrgbToLinear(msN.rgb);
+        float3 mS = gPassthrough != 0 ? msS.rgb : SrgbToLinear(msS.rgb);
+        float3 mW = gPassthrough != 0 ? msW.rgb : SrgbToLinear(msW.rgb);
+        float3 mE = gPassthrough != 0 ? msE.rgb : SrgbToLinear(msE.rgb);
+        float3 pN = gPassthrough != 0 ? psN.rgb : SrgbToLinear(psN.rgb);
+        float3 pS = gPassthrough != 0 ? psS.rgb : SrgbToLinear(psS.rgb);
+        float3 pW = gPassthrough != 0 ? psW.rgb : SrgbToLinear(psW.rgb);
+        float3 pE = gPassthrough != 0 ? psE.rgb : SrgbToLinear(psE.rgb);
+
+        const float3 dBlur = (d0 + (mN - pN) + (mS - pS) + (mW - pW) + (mE - pE)) * 0.2;
+        const float3 hfNoise = d0 - dBlur;
+
+        float3 displayRgb = gPassthrough != 0 ? original : LinearToSrgb(saturate(original));
+        const float skin = SkinColourWeight(displayRgb);
+        // Skin gets stronger soften; environment keeps more of the sharp residual.
+        const float soften = lerp(0.30, 0.70, skin);
+        result = max(original + e0 - soften * hfNoise, 0.0);
+    }
 
     // Back out of the normalised space the composition worked in.
     result *= normScale;

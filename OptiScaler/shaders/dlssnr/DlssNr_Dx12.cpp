@@ -260,6 +260,10 @@ struct NrState
     unsigned int heldHeight = 0;
     DXGI_FORMAT heldFormat = DXGI_FORMAT_UNKNOWN;
     float heldWhitePoint = 1.0f;
+    // Temporally filtered paper white. Live exposure / meter reads can move every frame and that
+    // re-scales the whole NR encode, which reads as face/scene shimmer ("pixels jumping").
+    float smoothedWhitePoint = 0.0f;
+    bool hasSmoothedWhitePoint = false;
 
     unsigned int workWidth = 0;
     unsigned int workHeight = 0;
@@ -458,7 +462,49 @@ constexpr float kTargetEncodedMean = 0.45f;
 
 // How fast the derived value follows the scene. Readings arrive a few times a second, and an exposure
 // that lunges at every cut is worse than one that arrives a moment late.
-constexpr float kWhitePointBlend = 0.25f;
+// Keep this low: even a few percent of paper-white change per frame re-scales the whole NR encode and
+// reads as face/geometry shimmer under Pre-SR.
+constexpr float kWhitePointBlend = 0.05f;
+
+// Snap instead of ease when the instant reading jumps by more than this ratio (camera cut / load).
+constexpr float kWhitePointCutRatio = 2.5f;
+
+// Hard cap on how far a non-cut frame may move, as a fraction of the previous value.
+constexpr float kWhitePointMaxStep = 0.02f;
+
+// Smooth an instant white-point reading. Cuts snap; ordinary lighting drifts ease and rate-limit.
+float SmoothWhitePoint(float instant, bool forceSnap)
+{
+    if (!std::isfinite(instant) || instant < 0.01f)
+        instant = 0.01f;
+    if (instant > 4096.0f)
+        instant = 4096.0f;
+
+    if (forceSnap || !g_nr.hasSmoothedWhitePoint)
+    {
+        g_nr.smoothedWhitePoint = instant;
+        g_nr.hasSmoothedWhitePoint = true;
+        return instant;
+    }
+
+    const float prev = std::max(g_nr.smoothedWhitePoint, 1e-6f);
+    const float ratio = instant / prev;
+    if (ratio >= kWhitePointCutRatio || ratio <= 1.0f / kWhitePointCutRatio)
+    {
+        g_nr.smoothedWhitePoint = instant;
+        return instant;
+    }
+
+    float eased = prev * (1.0f - kWhitePointBlend) + instant * kWhitePointBlend;
+    const float maxDelta = prev * kWhitePointMaxStep;
+    if (eased > prev + maxDelta)
+        eased = prev + maxDelta;
+    else if (eased < prev - maxDelta)
+        eased = prev - maxDelta;
+
+    g_nr.smoothedWhitePoint = eased;
+    return g_nr.smoothedWhitePoint;
+}
 
 // Recomputes the white point from a measured mean. Inverting the encode for the white point that puts
 // that mean at the target gives wp = mean * (1 - t^g) / t^g.
@@ -1004,6 +1050,8 @@ void ConsumeMeterReadback()
 void InvalidateExposureMeter()
 {
     g_nr.gameExposure = 0.0f;
+    g_nr.hasSmoothedWhitePoint = false;
+    g_nr.smoothedWhitePoint = 0.0f;
 
     for (bool& valid : g_nr.meterExposureValid)
         valid = false;
@@ -2224,22 +2272,15 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
     g_nr.gamePreExposure = frame.PreExposure;
 
     float whitePoint = ResolveWhitePoint(cfg, isHdrBuffer);
+    whitePoint = SmoothWhitePoint(whitePoint, frame.Reset || !g_nr.hasSmoothedWhitePoint);
 
-    // Zero-latency exposure (D3D12, source 1): when the game hands us a live exposure texture, the
-    // white point is recomputed in-shader every frame from it (ExposurePreMul / exposure) instead of
-    // the 3-4 frame CPU meter readback. whitePoint above still rides along in gWhitePoint as the
-    // fallback the shader uses if the live sample is missing or absurd. Bound at t4 (InPrevEdit) below.
+    // Prefer the smoothed CPU white point for encode AND resolve. The live exposure texture path
+    // recomputes paper white every frame inside the shader and was measured to chase the scene hard
+    // enough to shimmer faces and geometry under Pre-SR + DLSS Quality (see OptiScaler.log paper-white
+    // spam). gWhitePoint below stays the single source of truth.
     ID3D12Resource* exposureTex = nullptr;
     uint32_t useGameExposure = 0;
     float exposurePreMul = 0.0f;
-
-    if (cfg.DlssNrWhitePointSource.value_or_default() == 1 && frame.ExposureTexture != nullptr)
-    {
-        exposureTex = (ID3D12Resource*) frame.ExposureTexture;
-        useGameExposure = 1;
-        const float trim = std::clamp(cfg.DlssNrWhitePointTrim.value_or_default(), 0.25f, 4.0f);
-        exposurePreMul = g_nr.gamePreExposure * trim;
-    }
 
     // Frame hold. Freeze the encode's input so a live setting change re-renders the same frame. This
     // is self-contained on purpose: it copies the output aside on hold-on and copies it BACK over the
@@ -2679,7 +2720,7 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         // Enshrouded session, because a measured white point drifts continuously and every drift was a
         // change. A line per meaningful change is the point; a line per frame is a different problem.
         const ComposeReport composeNow { true,
-                                         std::round(resolveParams.WhitePoint * 100.0f) / 100.0f,
+                                         std::round(resolveParams.WhitePoint),
                                          resolveParams.TransferStrength,
                                          resolveParams.ColourStrength,
                                          resolveParams.MaxRatio,
