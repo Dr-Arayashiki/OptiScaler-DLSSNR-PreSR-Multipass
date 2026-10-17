@@ -1113,8 +1113,8 @@ NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer 
     // feature is what is actually running, and they differ for a frame after any backend change and
     // permanently after a fallback.
     if (upscaleResult && !bridged)
-        DlssNr::EvaluateAfterUpscaleVk(InCmdList, InParameters, vkInstance, vkPD, vkDevice,
-                                      rayReconstruction, nrHandled);
+        DlssNr::EvaluateAfterUpscaleVk(InCmdList, InParameters, vkInstance, vkPD, vkDevice, rayReconstruction,
+                                       nrHandled);
 
     return upscaleResult ? NVSDK_NGX_Result_Success : NVSDK_NGX_Result_Fail;
 }

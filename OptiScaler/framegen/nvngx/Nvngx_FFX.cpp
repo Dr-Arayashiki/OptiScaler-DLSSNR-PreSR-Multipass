@@ -206,7 +206,7 @@ bool QueryHDRLuminanceRange(NVSDK_NGX_Parameter* InParameters, Nvngx_FFX_Handle*
         // Then check the first HDR-capable output
         for (uint32_t j = 0; adapter->EnumOutputs(j, &output) == S_OK; j++)
         {
-            if (IDXGIOutput6* output6; output->QueryInterface(IID_PPV_ARGS(&output6)) == S_OK)
+            if (IDXGIOutput6 * output6; output->QueryInterface(IID_PPV_ARGS(&output6)) == S_OK)
             {
                 DXGI_OUTPUT_DESC1 outputDesc = {};
                 output6->GetDesc1(&outputDesc);
@@ -282,7 +282,7 @@ NVSDK_NGX_Result Nvngx_FFX::D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InC
         if (isOrthographicProjection)
             return false;
 
-        float (*cameraViewToClip)[4] = nullptr;
+        float(*cameraViewToClip)[4] = nullptr;
         InParameters->Get("DLSSG.CameraViewToClip", reinterpret_cast<void**>(&cameraViewToClip));
 
         if (!cameraViewToClip)
