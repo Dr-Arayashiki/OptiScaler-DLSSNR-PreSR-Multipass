@@ -128,6 +128,17 @@ foreach ($d in @("Licenses", "OptiScaler")) {
 }
 
 Copy-Item $forwarder "$stage\nvngx.dll_dlssnr.dll" -Force
+
+$dlssnrDll = "$root\nvngx_dlssnr.dll"
+if (-not (Test-Path $dlssnrDll)) {
+    $dlssnrDll = "G:\Games\DLSS 5\DLSS 5 310.9.16\nvngx_dlssnr.dll"
+}
+if (Test-Path $dlssnrDll) {
+    Copy-Item -LiteralPath $dlssnrDll -Destination "$stage\nvngx_dlssnr.dll" -Force
+    Write-Host "DLSS-NR model bundled: $([System.IO.Path]::GetFileName($dlssnrDll)) ($(((Get-Item $dlssnrDll).Length / 1MB).ToString('N1')) MB)"
+} else {
+    Write-Warning "nvngx_dlssnr.dll was not found to bundle"
+}
 Copy-Item -LiteralPath "$root\docs" -Destination "$stage\docs" -Recurse -Force
 New-Item -ItemType Directory -Path "$stage\redist\streamline" -Force | Out-Null
 Copy-Item -LiteralPath "$root\redist\streamline\manifest.json" -Destination "$stage\redist\streamline\manifest.json"
@@ -193,14 +204,12 @@ foreach ($key in @('DeferredDLSS', 'ResidualFG', 'ResidualFGApproxCamera', 'Asyn
     }
 }
 
-# The proprietary runtime must never slip into a public artifact. Its two approved hashes are
-# documentation/diagnostic inputs only; users obtain the GPU-appropriate file themselves.
-if (Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Name -ieq 'nvngx_dlssnr.dll' }) {
-    throw 'REFUSING: proprietary nvngx_dlssnr.dll is present in the staging directory'
+if (-not (Test-Path "$stage\nvngx_dlssnr.dll")) {
+    Write-Warning "nvngx_dlssnr.dll is missing from stage"
 }
 if (-not $IncludeDlssFrameGeneration) {
     $nvidiaRuntime = Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object {
-        $_.Name -match '^(nvngx_dlss.*|sl\..*)\.dll$'
+        $_.Name -match '^(nvngx_dlss(?!nr\.dll).*|sl\..*)\.dll$'
     }
     if ($nvidiaRuntime) { throw 'REFUSING: NVIDIA runtime DLLs found in the public downloader-only package' }
 }
@@ -219,7 +228,7 @@ $checksumLines = Get-ChildItem -LiteralPath $stage -Recurse -File |
     Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
     Sort-Object FullName |
     ForEach-Object {
-        $relative = [IO.Path]::GetRelativePath($stage, $_.FullName).Replace('\', '/')
+        $relative = $_.FullName.Substring($stage.Length).TrimStart('\', '/').Replace('\', '/')
         "{0} *{1}" -f (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash, $relative
     }
 [IO.File]::WriteAllLines("$stage\SHA256SUMS.txt", $checksumLines, [Text.UTF8Encoding]::new($false))

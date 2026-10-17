@@ -422,6 +422,7 @@ echo   DLSS 5 Neural Rendering
 echo  ------------------------------------------------------------------
 echo.
 set "dlssnrStockHash=E16BCF15E16E13F527491CDF7845B2FE6521A738D8F7C9C721866A8496E1FC8E"
+set "dlssnrStock3109Hash=CDFA6C1EC784867182164C7836F324F087B5C9F374D0C9FE46F54999FEABF3ED"
 set "dlssnrCrossGenHash=E67DEE209320CDAFE0E93E45675D7AA34323A53ACC57A72B2E40A181581C989A"
 set "dlssnrHash="
 if exist "nvngx_dlssnr.dll" for /f "skip=1 tokens=*" %%H in ('certutil -hashfile "nvngx_dlssnr.dll" SHA256') do if not defined dlssnrHash set "dlssnrHash=%%H"
@@ -433,6 +434,9 @@ if exist "nvngx_dlssnr.dll" (
     if /i "!dlssnrHash!"=="!dlssnrCrossGenHash!" (
         echo   ShortFuse cross-generation runtime detected.
         echo   This build supports RTX 20, 30, 40, and 50 series GPUs.
+    ) else if /i "!dlssnrHash!"=="!dlssnrStock3109Hash!" (
+        echo   Original NVIDIA 310.9.16 runtime detected.
+        echo   This file is for RTX 50 series GPUs.
     ) else if /i "!dlssnrHash!"=="!dlssnrStockHash!" (
         echo   Original NVIDIA 310.8 runtime detected.
         echo   This file is for RTX 50. RTX 20, 30, and 40 users must replace
@@ -445,7 +449,7 @@ if exist "nvngx_dlssnr.dll" (
     echo   nvngx_dlssnr.dll was NOT found in this folder.
     echo.
     echo   Neural Rendering needs it, but it cannot be redistributed here.
-    echo   Copy the GPU-appropriate 310.8 runtime into THIS folder - the
+    echo   Copy the GPU-appropriate runtime into THIS folder - the
     echo   same one holding the game executable and the renamed OptiScaler.
     echo.
     echo   One copy per game. There is no shared or system-wide location.
@@ -454,11 +458,11 @@ echo.
 echo   Two similarly named files matter here, one character apart:
 echo.
 echo     nvngx.dll_dlssnr.dll   ships in this package  ^(about 13 KB^)
-echo     nvngx_dlssnr.dll       you supply it          ^(about 165 MB^)
+echo     nvngx_dlssnr.dll       DLSS 5 model runtime   ^(about 263 MB^)
 echo.
 echo   Runtime required by GPU:
-echo     RTX 50          original NVIDIA 310.8
-echo                     !dlssnrStockHash!
+echo     RTX 50          original NVIDIA 310.9.16
+echo                     !dlssnrStock3109Hash!
 echo     RTX 20/30/40    ShortFuse cross-generation 310.8
 echo                     !dlssnrCrossGenHash!
 echo.
