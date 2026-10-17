@@ -107,6 +107,7 @@ void SetCreationParameters(NVSDK_NGX_Parameter* params, const Config& cfg, unsig
     // for "default" leaves whichever preset was chosen last still sitting in it, and going back to
     // default does nothing at all.
     SetUInt(params, "DLSSNR.Hint.Render.Preset", (unsigned int) cfg.DlssNrPreset.value_or_default());
+    SetUInt(params, "DLSSNR.MaskBlendMode", (unsigned int) cfg.DlssNrMaskBlendMode.value_or_default());
 
     SetFloat(params, "DLSSNR.Intensity", cfg.DlssNrIntensity.value_or_default());
     SetUInt(params, "DLSSNR.Style", (unsigned int) cfg.DlssNrStyle.value_or_default());

@@ -370,6 +370,8 @@ bool Config::Reload(std::filesystem::path iniPath)
             DlssNrAutoCapture.set_from_config(readBool("DlssNr", "AutoCapture"));
             DlssNrWhitePointScale.set_from_config(readFloat("DlssNr", "WhitePointScale"));
             DlssNrPreset.set_from_config(readUInt("DlssNr", "Preset"));
+            DlssNrMaskBlendMode.set_from_config(readUInt("DlssNr", "MaskBlendMode"));
+            DlssNrTranslatePtBr.set_from_config(readBool("DlssNr", "TranslatePtBr"));
             DlssNrIntensity.set_from_config(readFloat("DlssNr", "Intensity"));
             DlssNrStyle.set_from_config(readUInt("DlssNr", "Style"));
             DlssNrPass2Preset.set_from_config(readUInt("DlssNr", "Pass2Preset"));
@@ -1307,6 +1309,8 @@ bool Config::SaveIni()
     ini.SetValue("DlssNr", "WhitePointScale",
                  GetFloatValue(Instance()->DlssNrWhitePointScale.value_for_config()).c_str());
     ini.SetValue("DlssNr", "Preset", GetIntValue(Instance()->DlssNrPreset.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "MaskBlendMode", GetIntValue(Instance()->DlssNrMaskBlendMode.value_for_config()).c_str());
+    ini.SetValue("DlssNr", "TranslatePtBr", GetBoolValue(Instance()->DlssNrTranslatePtBr.value_for_config()).c_str());
     ini.SetValue("DlssNr", "Intensity", GetFloatValue(Instance()->DlssNrIntensity.value_for_config()).c_str());
     ini.SetValue("DlssNr", "Style", GetIntValue(Instance()->DlssNrStyle.value_for_config()).c_str());
     ini.SetValue("DlssNr", "Pass2Preset",

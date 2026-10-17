@@ -365,6 +365,7 @@ struct NrState
     // The values each live feature was created with. Preset and style may differ per layer; the
     // remaining strengths are intentionally shared by the stack.
     unsigned int builtPreset[DlssNr::MaxPassCount] = {};
+    unsigned int builtMaskBlendMode = 0;
     float builtIntensity = 0.0f;
     NrPassTuning builtPassTuning[DlssNr::MaxPassCount] {};
     unsigned int builtStyle[DlssNr::MaxPassCount] = {};
@@ -1371,6 +1372,9 @@ void SetExtras(const Config& cfg, ID3D12Resource* ui, ID3D12Resource* backbuffer
     // that could be seen, and the block persists, so a value still has to be put there.
     g_nr.setExtras(g_nr.capabilityParams, 1.0f, ui, ui, backbuffer,
                    uiWidth, uiHeight, bbWidth, bbHeight);
+
+    // DLSS 5 (310.9.16+) Mask Blend Mode
+    g_nr.capabilityParams->Set(DlssNr_Common::kMaskBlendMode, (unsigned int) cfg.DlssNrMaskBlendMode.value_or_default());
 }
 
 
@@ -1389,6 +1393,9 @@ bool TuningMatchesFeature(const Config& cfg, unsigned int requestedPasses)
             return false;
     }
 
+    if (g_nr.builtMaskBlendMode != cfg.DlssNrMaskBlendMode.value_or_default())
+        return false;
+
     return true;
 }
 
@@ -1396,6 +1403,7 @@ void RecordBuiltPrimaryTuning(const Config& cfg)
 {
     g_nr.builtPassTuning[0] = PassTuning(cfg, 0);
     g_nr.builtPreset[0] = PassPreset(cfg, 0);
+    g_nr.builtMaskBlendMode = cfg.DlssNrMaskBlendMode.value_or_default();
     g_nr.builtIntensity = cfg.DlssNrIntensity.value_or_default();
     g_nr.builtStyle[0] = PassStyle(cfg, 0);
     g_nr.builtLocalStructure = cfg.DlssNrLocalStructure.value_or_default();
@@ -2642,6 +2650,11 @@ void DlssNr_Dx12::Dispatch(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* c
         unsigned int style = 0;
         const NVSDK_NGX_Result styleResult = g_nr.capabilityParams->Get("DLSSNR.Style", &style);
         LOG_DEBUG("DLSS-NR readback DLSSNR.Style -> {} (result 0x{:X})", style, (uint32_t) styleResult);
+
+        unsigned int maskBlend = 0;
+        const NVSDK_NGX_Result maskBlendResult = g_nr.capabilityParams->Get(DlssNr_Common::kMaskBlendMode, &maskBlend);
+        LOG_DEBUG("DLSS-NR readback DLSSNR.MaskBlendMode -> {} (result 0x{:X}, we wrote {})", maskBlend,
+                  (uint32_t) maskBlendResult, cfg.DlssNrMaskBlendMode.value_or_default());
 
         // The preset is the last control whose arrival has never been checked, and three of them look
         // identical in play. Either it is not landing or the presets really are alike.

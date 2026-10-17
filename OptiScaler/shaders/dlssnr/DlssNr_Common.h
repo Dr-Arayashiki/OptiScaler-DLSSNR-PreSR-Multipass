@@ -225,7 +225,7 @@ struct alignas(256) DlssNrConstants
 
 class DlssNr_Common
 {
-  protected:
+  public:
     // The model's own parameter names, spelled once.
     //
     // These are not ours to choose and they do not vary by API, which is the whole reason they are
@@ -270,4 +270,7 @@ class DlssNr_Common
     static constexpr const char* kUiAlpha = "DLSSNR.UIAlpha";
     static constexpr const char* kBackbuffer = "DLSSNR.Backbuffer";
     static constexpr const char* kUiCorrection = "DLSSNR.UICorrection";
+
+    // DLSS 5 310.9.16+ parameter: Mask Blend Mode (62nd DLSSNR parameter)
+    static constexpr const char* kMaskBlendMode = "DLSSNR.MaskBlendMode";
 };

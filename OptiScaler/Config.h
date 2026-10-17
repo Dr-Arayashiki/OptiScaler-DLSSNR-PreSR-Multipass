@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "SysUtils.h"
 #include "State.h"
@@ -273,6 +273,8 @@ class Config
     // than one that does nothing.
     CustomOptional<int> DlssNrToggleKey { UnboundKey };
     CustomOptional<uint32_t> DlssNrPreset { 0 };
+    CustomOptional<uint32_t> DlssNrMaskBlendMode { 0 };
+    CustomOptional<bool> DlssNrTranslatePtBr { false };
     CustomOptional<float> DlssNrIntensity { 1.0f };
     // 0 default (standard), 1 natural, 2 cinematic -- the model's own processing profiles.
     CustomOptional<uint32_t> DlssNrStyle { 0 };
