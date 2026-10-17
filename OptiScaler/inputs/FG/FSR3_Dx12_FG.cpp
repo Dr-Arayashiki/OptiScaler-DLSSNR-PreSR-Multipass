@@ -275,7 +275,7 @@ Fsr3::FfxResourceDescription GetFfxResourceDescriptionDX12Local(ID3D12Resource* 
 
         if ((desc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) == D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)
             resourceDescription.usage =
-                (Fsr3::FfxResourceUsage)(resourceDescription.usage | Fsr3::FFX_RESOURCE_USAGE_UAV);
+                (Fsr3::FfxResourceUsage) (resourceDescription.usage | Fsr3::FFX_RESOURCE_USAGE_UAV);
 
         resourceDescription.width = (uint32_t) desc.Width;
         resourceDescription.height = (uint32_t) desc.Height;
